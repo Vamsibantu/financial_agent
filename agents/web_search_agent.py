@@ -1,0 +1,69 @@
+# =============================================================================
+# web_search_agent.py
+# -----------------------------------------------------------------------------
+# Defines the Web Search Agent for the Financial Agent system.
+# This agent uses DuckDuckGo to search the web and return relevant results
+# with cited sources.
+#
+# Model  : Groq - llama-3.3-70b-versatile
+# Tools  : DuckDuckGo (web search)
+# Output : Markdown formatted responses with source links
+# =============================================================================
+
+from phi.agent import Agent
+from phi.model.groq import Groq
+from phi.tools.duckduckgo import DuckDuckGo
+
+
+# agent configuration
+AGENT_NAME       = "Web Search Agent"
+AGENT_ROLE       = "Search the web for information"
+AGENT_MODEL_ID   = "llama-3.3-70b-versatile"
+SHOW_TOOL_CALLS  = True
+MARKDOWN_OUTPUT  = True
+
+AGENT_INSTRUCTIONS = [
+    "Always include sources",
+]
+
+# -----------------------------------------------------------------------------
+# Tool Initialization
+# DuckDuckGo is used as the search backend. No API key is required.
+# -----------------------------------------------------------------------------
+
+def build_duckduckgo_tool():
+    try:
+        return DuckDuckGo()
+    except Exception as e:
+        print(f"[web_search_agent] Failed to initialize DuckDuckGo tool: {e}")
+        raise
+
+
+def build_groq_model():
+    try:
+        return Groq(id=AGENT_MODEL_ID)
+    except Exception as e:
+        print(f"[web_search_agent] Failed to initialize Groq model: {e}")
+        raise
+
+
+def build_web_search_agent():
+    try:
+        model = build_groq_model()
+        tool  = build_duckduckgo_tool()
+        return Agent(
+            name=AGENT_NAME,
+            role=AGENT_ROLE,
+            model=model,
+            tools=[tool],
+            instructions=AGENT_INSTRUCTIONS,
+            show_tools_calls=SHOW_TOOL_CALLS,
+            markdown=MARKDOWN_OUTPUT,
+        )
+    except Exception as e:
+        print(f"[web_search_agent] Failed to initialize agent: {e}")
+        raise
+
+
+web_search_agent = build_web_search_agent()
+
