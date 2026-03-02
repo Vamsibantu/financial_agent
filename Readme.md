@@ -34,7 +34,6 @@ pip install -r requirements.txt
 Create a `.env` file in the project root with the following keys:
 
 ```env
-PHIDATA_API_KEY=your_phidata_api_key_here
 GROQ_API_KEY=your_groq_api_key_here
 ```
 
@@ -44,10 +43,8 @@ GROQ_API_KEY=your_groq_api_key_here
 ### 5. Run the Agent
 
 ```bash
-python financial_agent.py
+python main.py
 ```
-
----
 
 ## Indian Stocks — Ticker Symbol Rules
 
@@ -56,7 +53,7 @@ Yahoo Finance requires exchange-specific suffixes to identify Indian stocks. Wit
 ### Exchange Suffixes
 
 | Exchange | Suffix | Example |
-|---|---|---|
+|-------------------------------|-------|-----------------|
 | National Stock Exchange (NSE) | `.NS` | `TATAMOTORS.NS` |
 | Bombay Stock Exchange (BSE) | `.BO` | `TATAMOTORS.BO` |
 
@@ -65,7 +62,7 @@ Yahoo Finance requires exchange-specific suffixes to identify Indian stocks. Wit
 ### Common Indian Stock Tickers
 
 | Company | NSE Ticker | BSE Ticker |
-|---|---|---|
+|-------------|-----------------|-----------------|
 | Tata Motors | `TATAMOTORS.NS` | `TATAMOTORS.BO` |
 | Reliance Industries | `RELIANCE.NS` | `RELIANCE.BO` |
 | Infosys | `INFY.NS` | `INFY.BO` |
@@ -97,4 +94,3 @@ The agents are instructed to:
 | Financial Agent | `llama-3.3-70b-versatile` | YFinance | Stock price, fundamentals, news |
 | Web Search Agent | `llama-3.3-70b-versatile` | DuckDuckGo | Web search with sources |
 | Multi AI Agent | `llama-4-scout-17b-16e-instruct` | YFinance + DuckDuckGo | Combined financial + web data |
-

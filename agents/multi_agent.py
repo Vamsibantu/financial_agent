@@ -26,8 +26,7 @@ def build_duckduckgo_tool():
     try:
         return DuckDuckGo()
     except Exception as e:
-        print(f"[multi_ai_agent] Failed to initialize DuckDuckGo tool: {e}")
-        raise
+        raise RuntimeError(f"[multi_ai_agent] Failed to initialize DuckDuckGo tool: {e}")
 
 
 def build_yfinance_tool():
@@ -39,16 +38,14 @@ def build_yfinance_tool():
             company_news=True,
         )
     except Exception as e:
-        print(f"[multi_ai_agent] Failed to initialize YFinanceTools: {e}")
-        raise
+        raise RuntimeError(f"[multi_ai_agent] Failed to initialize YFinanceTools: {e}")
 
 
 def build_groq_model():
     try:
         return Groq(id=AGENT_MODEL_ID)
     except Exception as e:
-        print(f"[multi_ai_agent] Failed to initialize Groq model: {e}")
-        raise
+        raise RuntimeError(f"[multi_ai_agent] Failed to initialize Groq model: {e}")
 
 
 def build_multi_agent():
@@ -65,8 +62,7 @@ def build_multi_agent():
             show_tools_calls=SHOW_TOOL_CALLS,
         )
     except Exception as e:
-        print(f"[multi_ai_agent] Failed to initialize agent: {e}")
-        raise
+        raise RuntimeError(f"[multi_ai_agent] Failed to initialize agent: {e}")
 
 
 multi_ai_agent = build_multi_agent()

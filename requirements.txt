@@ -5,5 +5,6 @@ packaging # for packaging the code
 duckduckgo-search  # for searching acts like seach engine
 fastapi # for creating API
 uvicorn # for running the API
+jinja2 # for HTML templating
 groq   # for querying the data
 openai # for fetching the data from openai

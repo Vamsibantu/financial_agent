@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Agent</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                    </svg>
+                    <h1>FinAgent</h1>
+                </div>
+            </div>
+
+            <nav class="agent-selector">
+                <p class="nav-label">Select Agent</p>
+                <!-- Finance Agent (hidden for now)
+                <button class="agent-btn" data-agent="finance">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="1" x2="12" y2="23"></line>
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                    </svg>
+                    Finance Agent
+                </button>
+                -->
+                <!-- Web Search Agent (hidden for now)
+                <button class="agent-btn" data-agent="web_search">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    Web Search Agent
+                </button>
+                -->
+                <button class="agent-btn active" data-agent="multi">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="2" width="20" height="20" rx="3"></rect>
+                        <line x1="7" y1="2" x2="7" y2="22"></line>
+                        <line x1="17" y1="2" x2="17" y2="22"></line>
+                        <line x1="2" y1="12" x2="22" y2="12"></line>
+                    </svg>
+                    Multi Agent
+                </button>
+            </nav>
+
+            <div class="quick-queries">
+                <p class="nav-label">Quick Queries</p>
+                <button class="quick-btn" data-query="What is the stock price of AAPL?">AAPL Stock Price</button>
+                <button class="quick-btn" data-query="What is the stock price of RELIANCE.NS?">Reliance (NSE)</button>
+                <button class="quick-btn" data-query="What are analyst recommendations for TSLA?">TSLA Recommendations</button>
+                <button class="quick-btn" data-query="What does Tesla do?">About Tesla</button>
+                <button class="quick-btn" data-query="Latest news about NVIDIA stock">NVIDIA News</button>
+            </div>
+
+            <div class="chat-history">
+                <p class="nav-label">Chat History</p>
+                <div class="history-list" id="history-list">
+                    <p class="history-empty" id="history-empty">No conversations yet</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="main-header">
+                <div class="header-info">
+                    <h2 id="active-agent-title">Multi Agent</h2>
+                    <span class="agent-badge" id="agent-badge">Finance + Web Search Combined</span>
+                </div>
+                <button class="clear-btn" id="clear-chat" title="Clear chat">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    Clear
+                </button>
+            </header>
+
+            <!-- Chat Area -->
+            <div class="chat-area" id="chat-area">
+                <div class="welcome-message" id="welcome-message">
+                    <div class="welcome-icon">
+                        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                    </div>
+                    <h3>Welcome to Financial Agent</h3>
+                    <p>Ask questions about stock prices, company news, analyst recommendations, or search the web for financial information.</p>
+                    <div class="welcome-tips">
+                        <div class="tip">
+                            <strong>Finance Agent</strong>
+                            <span>Stock prices, fundamentals & analyst data</span>
+                        </div>
+                        <div class="tip">
+                            <strong>Web Search Agent</strong>
+                            <span>Search the web with DuckDuckGo</span>
+                        </div>
+                        <div class="tip">
+                            <strong>Multi Agent</strong>
+                            <span>Combined finance + web search</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <form id="query-form">
+                    <div class="input-wrapper">
+                        <textarea
+                            id="query-input"
+                            placeholder="Ask about stocks, companies, or financial news..."
+                            rows="1"
+                            autofocus
+                        ></textarea>
+                        <button type="submit" class="send-btn" id="send-btn" title="Send">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+                </form>
+                <p class="input-hint">Press Enter to send &middot; Shift+Enter for new line</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // =====================================================================
+        // State
+        // =====================================================================
+        let activeAgent = 'multi';
+        const agentMeta = {
+            finance:    { title: 'Finance Agent',     badge: 'Yahoo Finance + Groq LLM' },
+            web_search: { title: 'Web Search Agent',  badge: 'DuckDuckGo + Groq LLM' },
+            multi:      { title: 'Multi Agent',       badge: 'Finance + Web Search Combined' },
+        };
+
+        // Chat history storage
+        let chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+
+        // =====================================================================
+        // DOM refs
+        // =====================================================================
+        const chatArea       = document.getElementById('chat-area');
+        const welcomeMsg     = document.getElementById('welcome-message');
+        const queryForm      = document.getElementById('query-form');
+        const queryInput     = document.getElementById('query-input');
+        const sendBtn        = document.getElementById('send-btn');
+        const clearBtn       = document.getElementById('clear-chat');
+        const agentTitle     = document.getElementById('active-agent-title');
+        const agentBadge     = document.getElementById('agent-badge');
+        const agentBtns      = document.querySelectorAll('.agent-btn');
+        const quickBtns      = document.querySelectorAll('.quick-btn');
+
+        // =====================================================================
+        // Agent Selection
+        // =====================================================================
+        agentBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                agentBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                activeAgent = btn.dataset.agent;
+                const meta = agentMeta[activeAgent];
+                agentTitle.textContent = meta.title;
+                agentBadge.textContent = meta.badge;
+            });
+        });
+
+        // =====================================================================
+        // Quick Queries
+        // =====================================================================
+        quickBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                queryInput.value = btn.dataset.query;
+                queryInput.focus();
+            });
+        });
+
+        // =====================================================================
+        // Auto-resize textarea
+        // =====================================================================
+        queryInput.addEventListener('input', () => {
+            queryInput.style.height = 'auto';
+            queryInput.style.height = Math.min(queryInput.scrollHeight, 120) + 'px';
+        });
+
+        // =====================================================================
+        // Submit handler
+        // =====================================================================
+        queryForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = queryInput.value.trim();
+            if (!query) return;
+
+            // Hide welcome
+            if (welcomeMsg) welcomeMsg.style.display = 'none';
+
+            // Add user message
+            addMessage('user', query);
+            queryInput.value = '';
+            queryInput.style.height = 'auto';
+
+            // Loading indicator
+            const loadingEl = addMessage('assistant', '', true);
+
+            // Disable input
+            sendBtn.disabled = true;
+            queryInput.disabled = true;
+
+            try {
+                const res = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ agent: activeAgent, query }),
+                });
+                const data = await res.json();
+                loadingEl.remove();
+
+                if (data.success) {
+                    addMessage('assistant', data.response);
+                    saveToChatHistory(query, data.response);
+                } else {
+                    addMessage('assistant', `**Error:** ${data.error}`, false, true);
+                }
+            } catch (err) {
+                loadingEl.remove();
+                addMessage('assistant', `**Error:** Failed to connect to server. ${err.message}`, false, true);
+            } finally {
+                sendBtn.disabled = false;
+                queryInput.disabled = false;
+                queryInput.focus();
+            }
+        });
+
+        // Enter to submit (Shift+Enter for newline)
+        queryInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                queryForm.dispatchEvent(new Event('submit'));
+            }
+        });
+
+        // =====================================================================
+        // Clear chat
+        // =====================================================================
+        clearBtn.addEventListener('click', () => {
+            chatArea.innerHTML = '';
+            chatArea.appendChild(welcomeMsg);
+            welcomeMsg.style.display = 'flex';
+        });
+
+        // =====================================================================
+        // Chat History
+        // =====================================================================
+        function saveToChatHistory(query, response) {
+            const entry = {
+                id: Date.now(),
+                query: query,
+                response: response,
+                agent: activeAgent,
+                timestamp: new Date().toLocaleString(),
+            };
+            chatHistory.unshift(entry);
+            if (chatHistory.length > 20) chatHistory.pop(); // keep last 20
+            localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+            renderChatHistory();
+        }
+
+        function renderChatHistory() {
+            const historyList = document.getElementById('history-list');
+            const emptyMsg = document.getElementById('history-empty');
+            historyList.innerHTML = '';
+
+            if (chatHistory.length === 0) {
+                historyList.appendChild(emptyMsg);
+                emptyMsg.style.display = 'block';
+                return;
+            }
+
+            chatHistory.forEach(entry => {
+                const item = document.createElement('button');
+                item.className = 'history-item';
+                item.title = entry.query;
+                item.innerHTML = `
+                    <span class="history-query">${entry.query.length > 30 ? entry.query.slice(0, 30) + '...' : entry.query}</span>
+                    <span class="history-time">${entry.timestamp}</span>
+                `;
+                item.addEventListener('click', () => {
+                    if (welcomeMsg) welcomeMsg.style.display = 'none';
+                    // Clear current chat and show this history entry
+                    chatArea.querySelectorAll('.message').forEach(m => m.remove());
+                    addMessage('user', entry.query);
+                    addMessage('assistant', entry.response);
+                });
+                historyList.appendChild(item);
+            });
+        }
+
+        // Render history on page load
+        renderChatHistory();
+
+        // =====================================================================
+        // Add message to chat
+        // =====================================================================
+        function addMessage(role, content, isLoading = false, isError = false) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${role}`;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar';
+            avatar.innerHTML = role === 'user'
+                ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>'
+                : '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>';
+
+            const bubble = document.createElement('div');
+            bubble.className = `bubble${isError ? ' error' : ''}`;
+
+            if (isLoading) {
+                bubble.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div>';
+            } else {
+                bubble.innerHTML = marked.parse(content);
+            }
+
+            msgDiv.appendChild(avatar);
+            msgDiv.appendChild(bubble);
+            chatArea.appendChild(msgDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+            return msgDiv;
+        }
+    </script>
+</body>
+</html>

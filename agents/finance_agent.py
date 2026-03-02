@@ -26,16 +26,14 @@ def build_yfinance_tool():
             company_news=True,
         )
     except Exception as e:
-        print(f"[finance_agent] Failed to initialize YFinanceTools: {e}")
-        raise
+        raise RuntimeError(f"[finance_agent] Failed to initialize YFinanceTools: {e}")
 
 
 def build_groq_model():
     try:
         return Groq(id=AGENT_MODEL_ID)
     except Exception as e:
-        print(f"[finance_agent] Failed to initialize Groq model: {e}")
-        raise
+        raise RuntimeError(f"[finance_agent] Failed to initialize Groq model: {e}")
 
 
 def build_finance_agent():
@@ -51,8 +49,7 @@ def build_finance_agent():
             markdown=MARKDOWN_OUTPUT,
         )
     except Exception as e:
-        print(f"[finance_agent] Failed to build agent: {e}")
-        raise
+        raise RuntimeError(f"[finance_agent] Failed to build agent: {e}")
 
 
 finance_agent = build_finance_agent()

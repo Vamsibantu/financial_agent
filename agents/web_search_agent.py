@@ -35,16 +35,14 @@ def build_duckduckgo_tool():
     try:
         return DuckDuckGo()
     except Exception as e:
-        print(f"[web_search_agent] Failed to initialize DuckDuckGo tool: {e}")
-        raise
+        raise RuntimeError(f"[web_search_agent] Failed to initialize DuckDuckGo tool: {e}")
 
 
 def build_groq_model():
     try:
         return Groq(id=AGENT_MODEL_ID)
     except Exception as e:
-        print(f"[web_search_agent] Failed to initialize Groq model: {e}")
-        raise
+        raise RuntimeError(f"[web_search_agent] Failed to initialize Groq model: {e}")
 
 
 def build_web_search_agent():
@@ -61,8 +59,7 @@ def build_web_search_agent():
             markdown=MARKDOWN_OUTPUT,
         )
     except Exception as e:
-        print(f"[web_search_agent] Failed to initialize agent: {e}")
-        raise
+        raise RuntimeError(f"[web_search_agent] Failed to initialize agent: {e}")
 
 
 web_search_agent = build_web_search_agent()
