@@ -19,6 +19,11 @@ AGENT_INSTRUCTIONS = [
     "For Indian stocks listed on NSE, always append '.NS' to the ticker symbol (e.g., TATAMOTORS.NS, RELIANCE.NS, INFY.NS)",
     "For Indian stocks listed on BSE, always append '.BO' to the ticker symbol (e.g., TATAMOTORS.BO)",
     "If the user asks about an Indian company by name, resolve it to the correct NSE ticker with '.NS' suffix before querying",
+    # Safety guard: never call a finance tool without a known symbol
+    "IMPORTANT: Never call any finance tool (get_current_stock_price, get_stock_fundamentals, etc.) "
+    "unless you already have a concrete stock symbol from the user's message. "
+    "If the symbol is missing, ask the user to provide it BEFORE making any tool call. "
+    "For general questions (news, definitions, explanations), use DuckDuckGo web search instead.",
 ]
 
 
