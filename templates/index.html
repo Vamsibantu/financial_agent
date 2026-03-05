@@ -174,6 +174,51 @@
             line-height: 1.4;
         }
 
+        /* ── Voice / Mic button ────────────────────────────────── */
+        .mic-btn {
+            flex-shrink: 0;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            border: 1.5px solid rgba(255,255,255,0.12);
+            background: rgba(38,40,60,0.75);
+            color: #a084ee;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .mic-btn:hover {
+            background: rgba(106,141,255,0.15);
+            border-color: rgba(106,141,255,0.35);
+            color: #6a8dff;
+        }
+        .mic-btn.recording {
+            background: rgba(239,68,68,0.2);
+            border-color: rgba(239,68,68,0.55);
+            color: #f87171;
+            animation: micPulse 1s infinite;
+        }
+        .mic-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        @keyframes micPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.35); }
+            50%       { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+        }
+        .voice-indicator {
+            font-size: 0.74rem;
+            color: #f87171;
+            text-align: center;
+            padding-bottom: 2px;
+            display: none;
+            animation: voiceFade 1.2s infinite alternate;
+        }
+        .voice-indicator.active { display: block; }
+        @keyframes voiceFade {
+            from { opacity: 1; }
+            to   { opacity: 0.4; }
+        }
+
         /* ── Mobile ────────────────────────────────────────────── */
         @media (max-width: 600px) {
             .bubble  { max-width: 90vw; padding: 11px 14px; font-size: 0.95rem; }
@@ -282,6 +327,7 @@
 
             <!-- Input Area -->
             <div class="input-area">
+                <p class="voice-indicator" id="voice-indicator">● Recording... click mic to stop</p>
                 <form id="query-form">
                     <div class="input-wrapper">
                         <textarea
@@ -290,6 +336,14 @@
                             rows="1"
                             autofocus
                         ></textarea>
+                        <!-- Mic button for Sarvam voice input -->
+                        <button type="button" class="mic-btn" id="mic-btn" title="Voice input (Sarvam AI)">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"></path>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <line x1="12" y1="19" x2="12" y2="22"></line>
+                            </svg>
+                        </button>
                         <button type="submit" class="send-btn" id="send-btn" title="Send">
                             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                                 <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -298,7 +352,7 @@
                         </button>
                     </div>
                 </form>
-                <p class="input-hint">Press Enter to send &middot; Shift+Enter for new line</p>
+                <p class="input-hint">Press Enter to send &middot; Shift+Enter for new line &middot; 🎙 Mic for voice</p>
             </div>
         </main>
     </div>
@@ -545,6 +599,117 @@
             chatArea.appendChild(msgDiv);
             chatArea.scrollTop = chatArea.scrollHeight;
             return msgDiv;
+        }
+        // =====================================================================
+        // Voice Recording  (Sarvam AI — Saaras STT + Bulbul TTS)
+        // =====================================================================
+        let mediaRecorder = null;
+        let audioChunks   = [];
+        let isRecording   = false;
+
+        const micBtn         = document.getElementById('mic-btn');
+        const voiceIndicator = document.getElementById('voice-indicator');
+
+        micBtn.addEventListener('click', async () => {
+            if (isRecording) {
+                // ── Stop recording ────────────────────────────────────────
+                mediaRecorder.stop();
+                isRecording = false;
+                micBtn.classList.remove('recording');
+                voiceIndicator.classList.remove('active');
+            } else {
+                // ── Start recording ───────────────────────────────────────
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    audioChunks  = [];
+
+                    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                        ? 'audio/webm;codecs=opus'
+                        : 'audio/webm';
+
+                    mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+                    mediaRecorder.addEventListener('dataavailable', e => {
+                        if (e.data.size > 0) audioChunks.push(e.data);
+                    });
+
+                    mediaRecorder.addEventListener('stop', async () => {
+                        stream.getTracks().forEach(t => t.stop());
+                        const blob = new Blob(audioChunks, { type: mimeType });
+                        await sendVoiceQuery(blob, mimeType);
+                    });
+
+                    mediaRecorder.start();
+                    isRecording = true;
+                    micBtn.classList.add('recording');
+                    voiceIndicator.classList.add('active');
+                } catch (err) {
+                    alert('Microphone access denied: ' + err.message);
+                }
+            }
+        });
+
+        async function sendVoiceQuery(blob, mimeType) {
+            if (welcomeMsg) welcomeMsg.style.display = 'none';
+
+            // Show loading
+            const loadingEl = addMessage('assistant', '', true);
+            const labelEl   = loadingEl.querySelector('.loading-label');
+            if (labelEl) labelEl.textContent = 'Transcribing...';
+
+            sendBtn.disabled  = true;
+            micBtn.disabled   = true;
+            queryInput.disabled = true;
+
+            try {
+                const formData = new FormData();
+                const ext = mimeType.includes('webm') ? 'webm' : 'wav';
+                formData.append('audio', blob, `recording.${ext}`);
+                formData.append('agent', activeAgent);
+
+                setTimeout(() => { if (labelEl) labelEl.textContent = 'Processing...'; }, 1200);
+                setTimeout(() => { if (labelEl) labelEl.textContent = 'Generating...'; }, 2800);
+
+                const res  = await fetch('/api/voice', { method: 'POST', body: formData });
+                const data = await res.json();
+
+                await new Promise(r => setTimeout(r, 3000));  // min UX delay
+                loadingEl.remove();
+
+                if (data.success) {
+                    addMessage('user', data.transcript);
+                    const responseText = data.tts_notice
+                        ? data.response + `> ⚠️ *${data.tts_notice}*`
+                        : data.response;
+                    addMessage('assistant', responseText, false, false, data.agent_used);
+                    saveToChatHistory(data.transcript, data.response);
+
+                    // ── Play TTS audio if returned ────────────────────────
+                    if (data.audio_b64) {
+                        try {
+                            const raw   = atob(data.audio_b64);
+                            const bytes = new Uint8Array(raw.length);
+                            for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+                            const audioUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+                            const audio    = new Audio(audioUrl);
+                            audio.play().catch(e => console.warn('Audio playback blocked:', e));
+                        } catch (e) {
+                            console.warn('TTS decode error:', e);
+                        }
+                    }
+                } else {
+                    addMessage('assistant', `**Error:** ${data.error}`, false, true);
+                }
+            } catch (err) {
+                await new Promise(r => setTimeout(r, 800));
+                loadingEl.remove();
+                addMessage('assistant', `**Voice Error:** ${err.message}`, false, true);
+            } finally {
+                sendBtn.disabled    = false;
+                micBtn.disabled     = false;
+                queryInput.disabled = false;
+                queryInput.focus();
+            }
         }
     </script>
 </body>

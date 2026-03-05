@@ -2,20 +2,42 @@
 # app.py — FastAPI web server for the Financial Agent UI
 # =============================================================================
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 import os
+import re
 import traceback
+import httpx
 
-# ── Load environment ─────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────
+def _extract_failed_generation(error_msg: str) -> str:
+    """
+    Extract the LLM's natural-language text from a GROQ tool_use_failed error.
+    The error string is a Python dict repr, so values may use single or double quotes.
+    """
+    for marker in ["'failed_generation': '", '"failed_generation": "', "'failed_generation': \"", '"failed_generation": \'']:
+        idx = error_msg.find(marker)
+        if idx != -1:
+            text = error_msg[idx + len(marker):]
+            # Strip trailing quote characters and dict/JSON closers
+            text = text.rstrip("'\"} \n\r")
+            return text.strip()
+    return ""
+
+
+# ── Load environment ──────────────────────────────────────────────────────────
 load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
 if not api_key:
     raise ValueError("GROQ_API_KEY is not set. Check your .env file.")
 os.environ["GROQ_API_KEY"] = api_key
+
+sarvam_api_key = os.getenv("SARVAM_API_KEY")
+if not sarvam_api_key:
+    raise ValueError("SARVAM_API_KEY is not set. Check your .env file.")
 
 # ── Import agents ────────────────────────────────────────────────────────────
 from agents.finance_agent import finance_agent
@@ -124,6 +146,12 @@ async def query_agent(request: Request):
         traceback.print_exc()
         error_msg = str(e)
 
+        # ── GROQ tool_use_failed — extract LLM's natural-language reply ─────
+        if "tool_use_failed" in error_msg:
+            fg = _extract_failed_generation(error_msg)
+            reply = fg if fg else "I wasn't able to process that request. Could you please rephrase or provide more details?"
+            return JSONResponse({"success": True, "response": reply, "agent_used": agent_key})
+
         # ── GROQ tool-call validation error (400) ────────────────────────────
         # Happens when the LLM tries to call a tool without all required
         # parameters (e.g. calling get_current_stock_price without 'symbol').
@@ -141,6 +169,189 @@ async def query_agent(request: Request):
         # ── Generic agent / API errors ────────────────────────────────────────
         return JSONResponse(
             {"success": False, "error": f"Agent error: {error_msg}"},
+            status_code=500,
+        )
+
+
+# ── Voice query endpoint (STT → Agent → TTS via Sarvam AI) ─────────────────
+@app.post("/api/voice")
+async def voice_query(
+    audio: UploadFile = File(...),
+    agent: str = Form("auto"),
+):
+    """
+    Accept a voice recording, transcribe via Sarvam Saaras v3 STT,
+    run through the selected agent, and return text + Bulbul v2 TTS audio.
+    """
+    try:
+        # ── Guard: reject empty uploads ──────────────────────────────────────
+        audio_bytes = await audio.read()
+        if not audio_bytes:
+            return JSONResponse(
+                {"success": False, "error": "No audio received. Please record something before sending."},
+                status_code=400,
+            )
+
+        filename  = audio.filename or "recording.webm"
+        # Sarvam rejects codec-qualified types like "audio/webm;codecs=opus" —
+        # strip everything after the semicolon to get the bare MIME type.
+        raw_mime  = audio.content_type or "audio/webm"
+        mime_type = raw_mime.split(";")[0].strip()
+
+        # ── 1. Speech-to-Text (Sarvam Saaras v3) ────────────────────────────
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                stt_resp = await client.post(
+                    "https://api.sarvam.ai/speech-to-text",
+                    headers={"api-subscription-key": sarvam_api_key},
+                    files={"file": (filename, audio_bytes, mime_type)},
+                    data={"model": "saaras:v3", "language_code": "unknown"},
+                )
+        except httpx.TimeoutException:
+            return JSONResponse(
+                {"success": False, "error": "Speech-to-text timed out. Please try again."},
+                status_code=504,
+            )
+        except httpx.NetworkError as e:
+            return JSONResponse(
+                {"success": False, "error": f"Network error reaching Sarvam STT: {e}"},
+                status_code=502,
+            )
+
+        if stt_resp.status_code == 401:
+            return JSONResponse(
+                {"success": False, "error": "Invalid Sarvam API key. Check your SARVAM_API_KEY in .env."},
+                status_code=401,
+            )
+        if stt_resp.status_code == 429:
+            return JSONResponse(
+                {"success": False, "error": "Sarvam API rate limit reached. Please wait a moment and try again."},
+                status_code=429,
+            )
+        if stt_resp.status_code != 200:
+            # Extract the human-readable message from Sarvam's error JSON if present
+            try:
+                err_detail = stt_resp.json().get("error", {}).get("message", stt_resp.text)
+            except Exception:
+                err_detail = stt_resp.text
+            return JSONResponse(
+                {"success": False, "error": f"Speech-to-text failed: {err_detail}"},
+                status_code=502,
+            )
+
+        transcript = stt_resp.json().get("transcript", "").strip()
+        if not transcript:
+            return JSONResponse(
+                {"success": False, "error": "Could not hear anything. Please speak clearly and try again."},
+                status_code=422,
+            )
+
+        # ── 2. Run through agent ─────────────────────────────────────────────
+        agent_key = agent
+        if agent_key == "auto":
+            agent_key = detect_agent(transcript)
+
+        agent_obj = AGENT_MAP.get(agent_key)
+        if not agent_obj:
+            return JSONResponse(
+                {"success": False, "error": f"Unknown agent: {agent_key}"},
+                status_code=400,
+            )
+
+        try:
+            response = agent_obj.run(transcript)
+        except Exception as agent_err:
+            err_msg = str(agent_err)
+            if "tool_use_failed" in err_msg:
+                fg = _extract_failed_generation(err_msg)
+                reply = fg if fg else "I wasn't able to process that request. Could you please rephrase or provide more details?"
+                return JSONResponse({
+                    "success":    True,
+                    "transcript": transcript,
+                    "response":   reply,
+                    "audio_b64":  None,
+                    "tts_notice": None,
+                    "agent_used": agent_key,
+                })
+            if "tool call validation failed" in err_msg or "missing properties" in err_msg:
+                return JSONResponse(
+                    {"success": False, "error": (
+                        "The agent tried to look up data before getting a stock symbol. "
+                        "Try saying something like: 'What is the stock price of Reliance?'"
+                    )},
+                    status_code=400,
+                )
+            traceback.print_exc()
+            return JSONResponse(
+                {"success": False, "error": f"Agent error: {agent_err}"},
+                status_code=500,
+            )
+
+        content = ""
+        if hasattr(response, "content") and response.content:
+            content = response.content
+        elif hasattr(response, "messages") and response.messages:
+            for msg in reversed(response.messages):
+                if hasattr(msg, "content") and msg.content:
+                    content = msg.content
+                    break
+        if not content:
+            content = str(response)
+
+        # ── 3. Text-to-Speech (Sarvam Bulbul v2) ────────────────────────────
+        # Strip markdown symbols and limit to 500 chars for clean TTS
+        clean     = re.sub(r'[#*`_~>|\[\]()!]', '', content)
+        clean     = re.sub(r'\n+', ' ', clean).strip()
+        tts_input = clean[:500]
+
+        audio_b64  = None
+        tts_notice = None
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                tts_resp = await client.post(
+                    "https://api.sarvam.ai/text-to-speech",
+                    headers={
+                        "api-subscription-key": sarvam_api_key,
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "inputs": [tts_input],
+                        "target_language_code": "en-IN",
+                        "speaker": "meera",
+                        "model": "bulbul:v2",
+                        "pitch": 0,
+                        "pace": 1.0,
+                        "loudness": 1.5,
+                        "speech_sample_rate": 22050,
+                        "enable_preprocessing": True,
+                    },
+                )
+            if tts_resp.status_code == 200:
+                audio_b64 = tts_resp.json().get("audios", [None])[0]
+            elif tts_resp.status_code == 429:
+                tts_notice = "Audio reply unavailable (rate limit). Showing text response."
+            else:
+                tts_notice = "Audio reply unavailable. Showing text response."
+        except httpx.TimeoutException:
+            tts_notice = "Audio reply timed out. Showing text response."
+        except httpx.NetworkError:
+            tts_notice = "Audio reply unavailable (network error). Showing text response."
+        except Exception as tts_err:
+            tts_notice = f"Audio reply unavailable: {tts_err}"
+
+        return JSONResponse({
+            "success":    True,
+            "transcript": transcript,
+            "response":   content,
+            "audio_b64":  audio_b64,
+            "tts_notice": tts_notice,   # non-fatal TTS warning, shown in UI if set
+            "agent_used": agent_key,
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(
+            {"success": False, "error": f"Unexpected voice error: {e}"},
             status_code=500,
         )
 

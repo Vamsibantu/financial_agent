@@ -6,19 +6,25 @@ from phi.tools.yfinance import YFinanceTools
 # agent configuration
 AGENT_NAME      = "Financial Agent"
 AGENT_MODEL_ID  = "llama-3.3-70b-versatile"
-SHOW_TOOL_CALLS = True
+SHOW_TOOL_CALLS = False
 MARKDOWN_OUTPUT = True
 
 AGENT_INSTRUCTIONS = [
-    "Use tables to display the data",
-    "For Indian stocks listed on NSE, always append '.NS' to the ticker symbol (e.g., TATAMOTORS.NS, RELIANCE.NS, INFY.NS)",
-    "For Indian stocks listed on BSE, always append '.BO' to the ticker symbol (e.g., TATAMOTORS.BO)",
-    "If the user asks about an Indian company by name, resolve it to the correct NSE ticker with '.NS' suffix before querying",
+    "Use tables to display the data.",
+    "For Indian stocks listed on NSE, always append '.NS' to the ticker symbol (e.g., TATAMOTORS.NS, RELIANCE.NS, INFY.NS).",
+    "For Indian stocks listed on BSE, always append '.BO' to the ticker symbol (e.g., TATAMOTORS.BO).",
+    "If the user asks about an Indian company by name, resolve it to the correct NSE ticker with '.NS' suffix before querying.",
+    # Always use tools — never redirect to external sites
+    "CRITICAL: You have live data tools built in. ALWAYS call those tools directly to fetch stock prices, "
+    "fundamentals, analyst recommendations, and company news. "
+    "NEVER suggest the user visit Yahoo Finance, Google Finance, NSE, BSE, Moneycontrol, or ANY external website. "
+    "NEVER output URLs or website links. If your tool call fails or returns no data, say so plainly "
+    "(e.g. 'I could not retrieve the data for that ticker at the moment. Please try again shortly.') "
+    "and offer to try a different ticker or suggest rephrasing — but never point to external sites.",
     # Safety guard: never call a tool unless ALL required parameters are known
-    "IMPORTANT: Never call any tool or function unless you already have all required parameters from the user's message. "
-    "If the stock symbol or company name is missing, ask the user to provide it BEFORE making any tool call. "
-    "Do not attempt to call get_current_stock_price, get_stock_fundamentals, get_analyst_recommendations, "
-    "or get_company_news without a concrete ticker symbol.",
+    "IMPORTANT: Never call any tool unless you already have a concrete stock ticker or company name from the user's message. "
+    "If the symbol is missing, politely ask the user to specify it. "
+    "Do not attempt to fetch price, fundamentals, recommendations, or news without a valid ticker symbol.",
 ]
 
 
