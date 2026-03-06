@@ -1,12 +1,18 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Financial Agent</title>
+    <title>FinAgent – Financial AI Assistant</title>
+    <meta name="description" content="Live stock prices, fundamentals, analyst data and web search powered by AI.">
+    <meta name="theme-color" content="#6366f1">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
     <link rel="stylesheet" href="/static/style.css">
     <!-- Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Chart.js for inline price charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <style>
         /* ── Chat bubble overrides ─────────────────────────────── */
         .chat-area {
@@ -224,6 +230,189 @@
             .bubble  { max-width: 90vw; padding: 11px 14px; font-size: 0.95rem; }
             .chat-area { padding: 16px 12px 8px; }
         }
+
+        /* ── Copy button on assistant bubbles ──────────────────── */
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 26px;
+            height: 26px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(25,27,45,0.85);
+            color: #8b92a8;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s, color 0.2s;
+            backdrop-filter: blur(4px);
+        }
+        .message.assistant .bubble:hover .copy-btn { opacity: 1; }
+        .copy-btn:hover { color: #a084ee; border-color: rgba(160,132,238,0.4); }
+        .copy-btn.copied { color: #22c55e; border-color: rgba(34,197,94,0.4); }
+
+        /* ── Chart bubble ───────────────────────────────────────── */
+        .chart-bubble {
+            background: #1a1b2e;
+            border: 1px solid #2e3048;
+            border-radius: 14px;
+            padding: 16px 18px;
+            width: min(560px, 100%);
+        }
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .chart-ticker { font-size: 0.9rem; font-weight: 700; color: #e4e7f1; }
+        .chart-change {
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 2px 9px;
+            border-radius: 20px;
+        }
+        .chart-change.up   { background: rgba(74,222,128,0.15); color: #4ade80; }
+        .chart-change.down { background: rgba(248,113,113,0.15); color: #f87171; }
+        .chart-canvas-wrap { position: relative; height: 200px; }
+        .chart-period-btns {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .chart-period-btn {
+            font-size: 0.72rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            border: 1px solid #2e3048;
+            background: transparent;
+            color: #888;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .chart-period-btn.active,
+        .chart-period-btn:hover {
+            background: rgba(99,102,241,0.2);
+            border-color: rgba(99,102,241,0.5);
+            color: #e4e7f1;
+        }
+
+        /* ── Follow-up chips ───────────────────────────────────── */
+        .followup-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .chip-btn {
+            padding: 4px 12px;
+            border-radius: 20px;
+            border: 1px solid rgba(99,102,241,0.35);
+            background: rgba(99,102,241,0.08);
+            color: #a5b4fc;
+            font-size: 0.76rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .chip-btn:hover {
+            background: rgba(99,102,241,0.2);
+            border-color: rgba(99,102,241,0.6);
+            color: #e0e7ff;
+        }
+
+        /* ── Watchlist ─────────────────────────────────────────── */
+        .chat-history-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .clear-history-btn {
+            font-size: 0.68rem;
+            padding: 2px 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(239,68,68,0.3);
+            background: transparent;
+            color: #f87171;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .clear-history-btn:hover {
+            background: rgba(239,68,68,0.15);
+            border-color: rgba(239,68,68,0.6);
+        }
+        .watchlist-section { display: flex; flex-direction: column; gap: 5px; }
+        .watchlist-input-row {
+            display: flex;
+            gap: 6px;
+        }
+        .watchlist-input {
+            flex: 1;
+            background: rgba(30,34,48,0.8);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 7px;
+            color: #e4e7f1;
+            font-size: 0.78rem;
+            padding: 5px 10px;
+            font-family: inherit;
+            outline: none;
+            text-transform: uppercase;
+        }
+        .watchlist-input::placeholder { color: #5c6378; text-transform: none; }
+        .watchlist-input:focus { border-color: rgba(99,102,241,0.5); }
+        .watchlist-add-btn {
+            padding: 5px 10px;
+            border-radius: 7px;
+            border: 1px solid rgba(99,102,241,0.3);
+            background: rgba(99,102,241,0.12);
+            color: #a5b4fc;
+            font-size: 0.78rem;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        .watchlist-add-btn:hover { background: rgba(99,102,241,0.25); }
+        .watchlist-items { display: flex; flex-direction: column; gap: 4px; }
+        .watchlist-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            background: rgba(30,34,48,0.6);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 7px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .watchlist-item:hover { background: rgba(99,102,241,0.1); border-color: rgba(99,102,241,0.3); }
+        .watchlist-ticker { font-size: 0.8rem; color: #e4e7f1; font-weight: 600; }
+        .watchlist-remove {
+            background: none;
+            border: none;
+            color: #5c6378;
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 0 2px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+        .watchlist-remove:hover { color: #ef4444; }
+
+        /* ── Input len counter ─────────────────────────────────── */
+        .char-counter {
+            font-size: 0.68rem;
+            color: #5c6378;
+            text-align: right;
+            padding-right: 4px;
+            transition: color 0.2s;
+        }
+        .char-counter.warn { color: #f59e0b; }
+        .char-counter.over { color: #ef4444; }
     </style>
 </head>
 <body>
@@ -267,15 +456,25 @@
                 <button class="quick-btn" data-query="What is the stock price of AAPL?">AAPL Stock Price</button>
                 <button class="quick-btn" data-query="What is the stock price of RELIANCE.NS?">Reliance (NSE)</button>
                 <button class="quick-btn" data-query="What are analyst recommendations for TSLA?">TSLA Recommendations</button>
-                <button class="quick-btn" data-query="What does Tesla do?">About Tesla</button>
-                <button class="quick-btn" data-query="Latest news about NVIDIA stock">NVIDIA News</button>
             </div>
 
             <div class="chat-history">
-                <p class="nav-label">Chat History</p>
+                <div class="chat-history-header">
+                    <p class="nav-label" style="margin:0">Chat History</p>
+                    <button class="clear-history-btn" id="clear-history-btn" title="Clear all history">Clear</button>
+                </div>
                 <div class="history-list" id="history-list">
                     <p class="history-empty" id="history-empty">No conversations yet</p>
                 </div>
+            </div>
+
+            <div class="watchlist-section">
+                <p class="nav-label">Watchlist</p>
+                <div class="watchlist-input-row">
+                    <input class="watchlist-input" id="watchlist-input" placeholder="Add ticker (e.g. INFY.NS)" maxlength="20">
+                    <button class="watchlist-add-btn" id="watchlist-add-btn">+ Add</button>
+                </div>
+                <div class="watchlist-items" id="watchlist-items"></div>
             </div>
 
             <div class="sidebar-badge-wrap">
@@ -353,11 +552,17 @@
                     </div>
                 </form>
                 <p class="input-hint">Press Enter to send &middot; Shift+Enter for new line &middot; 🎙 Mic for voice</p>
+                <p class="char-counter" id="char-counter">0 / 1000</p>
             </div>
         </main>
     </div>
 
     <script>
+        // =====================================================================
+        // Constants
+        // =====================================================================
+        const MAX_QUERY_LEN = 1000;
+
         // =====================================================================
         // State
         // =====================================================================
@@ -369,13 +574,16 @@
             multi:      { title: 'Multi Agent',          badge: 'Finance + Web Search Combined' },
         };
         const agentUsedLabel = {
-            finance:    '🏦 Finance Agent',
+            finance:    '📈 Finance Agent',
             web_search: '🔍 Web Search Agent',
-            multi:      '🤖 Multi Agent',
+            multi:      '⚡ Multi Agent',
         };
 
-        // Chat history storage
-        let chatHistory = JSON.parse(sessionStorage.getItem('chatHistory') || '[]');
+        // story — persisted in localStorage
+        let chatHistory = JSON.parse(localStorage.getItem('finagent_history') || '[]');
+
+        // Watchlist — persisted in localStorage
+        let watchlist = JSON.parse(localStorage.getItem('finagent_watchlist') || '[]');
 
         // =====================================================================
         // DOM refs
@@ -390,6 +598,7 @@
         const agentBadge     = document.getElementById('agent-badge');
         const agentBtns      = document.querySelectorAll('.agent-btn');
         const quickBtns      = document.querySelectorAll('.quick-btn');
+        const charCounter    = document.getElementById('char-counter');
 
         // =====================================================================
         // Agent Selection
@@ -412,15 +621,24 @@
             btn.addEventListener('click', () => {
                 queryInput.value = btn.dataset.query;
                 queryInput.focus();
+                updateCharCounter();
             });
         });
 
         // =====================================================================
-        // Auto-resize textarea
+        // Auto-resize textarea + char counter
         // =====================================================================
+        function updateCharCounter() {
+            const len = queryInput.value.length;
+            charCounter.textContent = `${len} / ${MAX_QUERY_LEN}`;
+            charCounter.className = 'char-counter';
+            if (len > MAX_QUERY_LEN) charCounter.classList.add('over');
+            else if (len > MAX_QUERY_LEN * 0.85) charCounter.classList.add('warn');
+        }
         queryInput.addEventListener('input', () => {
             queryInput.style.height = 'auto';
             queryInput.style.height = Math.min(queryInput.scrollHeight, 120) + 'px';
+            updateCharCounter();
         });
 
         // =====================================================================
@@ -430,6 +648,29 @@
             e.preventDefault();
             const query = queryInput.value.trim();
             if (!query) return;
+            if (query.length > MAX_QUERY_LEN) {
+                addMessage('assistant', `**Error:** Query too long. Please keep it under ${MAX_QUERY_LEN} characters.`, false, true);
+                return;
+            }
+
+            // ── Chart shortcut: chart keyword but no ticker → prompt user ──
+            if (CHART_KEYWORDS.test(query) && !detectChartRequest(query)) {
+                if (welcomeMsg) welcomeMsg.style.display = 'none';
+                addMessage('user', query);
+                queryInput.value = '';
+                queryInput.style.height = 'auto';
+                updateCharCounter();
+                addMessage('assistant',
+                    "📊 **To show a chart, please include a stock ticker in your message.**\n\n" +
+                    "**Examples:**\n" +
+                    "- `Show AAPL chart`\n" +
+                    "- `Plot RELIANCE.NS graph`\n" +
+                    "- `HDFCBANK.NS chart 3 months`\n" +
+                    "- `TCS.NS price history 1 year`\n\n" +
+                    "> For Indian stocks use `.NS` for NSE (e.g. `INFY.NS`) or `.BO` for BSE."
+                );
+                return;
+            }
 
             // Hide welcome
             if (welcomeMsg) welcomeMsg.style.display = 'none';
@@ -438,6 +679,7 @@
             addMessage('user', query);
             queryInput.value = '';
             queryInput.style.height = 'auto';
+            updateCharCounter();
 
             // Loading indicator with sequence
             const loadingEl = addMessage('assistant', '', true);
@@ -471,10 +713,13 @@
                 loadingEl.remove();
 
                 if (data.success) {
-                    // Show which agent was actually used (relevant in auto mode)
                     const usedKey = data.agent_used || activeAgent;
                     addMessage('assistant', data.response, false, false, usedKey);
                     saveToChatHistory(query, data.response);
+                    renderFollowUpChips(query, data.response);
+                    // ── Chart detection ──────────────────────────────────
+                    const chartReq = detectChartRequest(query);
+                    if (chartReq) renderChartBubble(chartReq.ticker, chartReq.period);
                 } else {
                     addMessage('assistant', `**Error:** ${data.error}`, false, true);
                 }
@@ -507,19 +752,19 @@
         });
 
         // =====================================================================
-        // Chat History
+        // Chat History — persisted in localStorage
         // =====================================================================
         function saveToChatHistory(query, response) {
             const entry = {
                 id: Date.now(),
-                query: query,
-                response: response,
+                query,
+                response,
                 agent: activeAgent,
                 timestamp: new Date().toLocaleString(),
             };
             chatHistory.unshift(entry);
-            if (chatHistory.length > 20) chatHistory.pop(); // keep last 20
-            sessionStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+            if (chatHistory.length > 30) chatHistory.pop();
+            localStorage.setItem('finagent_history', JSON.stringify(chatHistory));
             renderChatHistory();
         }
 
@@ -544,7 +789,6 @@
                 `;
                 item.addEventListener('click', () => {
                     if (welcomeMsg) welcomeMsg.style.display = 'none';
-                    // Clear current chat and show this history entry
                     chatArea.querySelectorAll('.message').forEach(m => m.remove());
                     addMessage('user', entry.query);
                     addMessage('assistant', entry.response, false, false, entry.agent);
@@ -553,8 +797,16 @@
             });
         }
 
-        // Render history on page load
         renderChatHistory();
+
+        // Clear all chat history
+        document.getElementById('clear-history-btn').addEventListener('click', () => {
+            if (!chatHistory.length) return;
+            if (!confirm('Clear all chat history?')) return;
+            chatHistory = [];
+            localStorage.removeItem('finagent_history');
+            renderChatHistory();
+        });
 
         // =====================================================================
         // Add message to chat
@@ -584,6 +836,27 @@
                     </div>`;
             } else {
                 bubble.innerHTML = marked.parse(content);
+
+                // ── Copy button ───────────────────────────────────────────
+                if (role === 'assistant' && !isError) {
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'copy-btn';
+                    copyBtn.title = 'Copy response';
+                    copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+                    copyBtn.addEventListener('click', () => {
+                        navigator.clipboard.writeText(content).then(() => {
+                            copyBtn.classList.add('copied');
+                            copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>';
+                            setTimeout(() => {
+                                copyBtn.classList.remove('copied');
+                                copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+                            }, 2000);
+                        });
+                    });
+                    bubble.appendChild(copyBtn);
+                }
+
+                // ── Agent tag ─────────────────────────────────────────────
                 if (role === 'assistant' && !isError && agentKey) {
                     const agentEmojis  = { finance: '📈', web_search: '🔍', multi: '⚡' };
                     const agentLabels  = { finance: 'Finance', web_search: 'Web Search', multi: 'Multi' };
@@ -600,6 +873,98 @@
             chatArea.scrollTop = chatArea.scrollHeight;
             return msgDiv;
         }
+
+        // =====================================================================
+        // Follow-up suggestion chips
+        // =====================================================================
+        const FOLLOWUP_MAP = {
+            'stock price':        ['Get analyst recommendations', 'Show company fundamentals', 'Latest company news'],
+            'price':              ['Get analyst recommendations', 'Show company fundamentals', 'Latest company news'],
+            'analyst':            ['Show stock price', 'Show company fundamentals', 'Latest company news'],
+            'fundamental':        ['Show stock price', 'Get analyst recommendations', 'Latest company news'],
+            'news':               ['Show stock price', 'Get analyst recommendations', 'Show company fundamentals'],
+            'what is':            ['Tell me more', 'Latest news about this', 'Show related stocks'],
+            'explain':            ['Give an example', 'Latest news about this'],
+        };
+
+        function renderFollowUpChips(query, response) {
+            // Remove existing chips
+            chatArea.querySelectorAll('.followup-chips').forEach(el => el.remove());
+
+            const lower = query.toLowerCase();
+            let chips = null;
+            for (const [kw, suggestions] of Object.entries(FOLLOWUP_MAP)) {
+                if (lower.includes(kw)) { chips = suggestions; break; }
+            }
+            if (!chips) return;
+
+            const wrap = document.createElement('div');
+            wrap.className = 'followup-chips';
+            chips.forEach(text => {
+                const btn = document.createElement('button');
+                btn.className = 'chip-btn';
+                btn.textContent = text;
+                btn.addEventListener('click', () => {
+                    // Merge chip with last ticker/company in query if present
+                    const tickerMatch = query.match(/[A-Z]{2,}(?:\.[A-Z]{2})?/);
+                    const finalQuery = tickerMatch ? `${text} for ${tickerMatch[0]}` : text;
+                    queryInput.value = finalQuery;
+                    updateCharCounter();
+                    queryInput.focus();
+                    wrap.remove();
+                });
+                wrap.appendChild(btn);
+            });
+            chatArea.appendChild(wrap);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        // =====================================================================
+        // Watchlist — persisted in localStorage
+        // =====================================================================
+        const watchlistInput  = document.getElementById('watchlist-input');
+        const watchlistAddBtn = document.getElementById('watchlist-add-btn');
+        const watchlistItems  = document.getElementById('watchlist-items');
+
+        function renderWatchlist() {
+            watchlistItems.innerHTML = '';
+            watchlist.forEach(ticker => {
+                const item = document.createElement('div');
+                item.className = 'watchlist-item';
+                item.innerHTML = `
+                    <span class="watchlist-ticker">${ticker}</span>
+                    <button class="watchlist-remove" title="Remove">✕</button>
+                `;
+                item.querySelector('.watchlist-remove').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    watchlist = watchlist.filter(t => t !== ticker);
+                    localStorage.setItem('finagent_watchlist', JSON.stringify(watchlist));
+                    renderWatchlist();
+                });
+                item.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('watchlist-remove')) return;
+                    queryInput.value = `What is the stock price of ${ticker}?`;
+                    updateCharCounter();
+                    queryInput.focus();
+                });
+                watchlistItems.appendChild(item);
+            });
+        }
+
+        watchlistAddBtn.addEventListener('click', () => {
+            const val = watchlistInput.value.trim().toUpperCase();
+            if (!val || watchlist.includes(val)) return;
+            watchlist.push(val);
+            localStorage.setItem('finagent_watchlist', JSON.stringify(watchlist));
+            watchlistInput.value = '';
+            renderWatchlist();
+        });
+        watchlistInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); watchlistAddBtn.click(); }
+        });
+
+        renderWatchlist();
+
         // =====================================================================
         // Voice Recording  (Sarvam AI — Saaras STT + Bulbul TTS)
         // =====================================================================
@@ -612,13 +977,11 @@
 
         micBtn.addEventListener('click', async () => {
             if (isRecording) {
-                // ── Stop recording ────────────────────────────────────────
                 mediaRecorder.stop();
                 isRecording = false;
                 micBtn.classList.remove('recording');
                 voiceIndicator.classList.remove('active');
             } else {
-                // ── Start recording ───────────────────────────────────────
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     audioChunks  = [];
@@ -652,7 +1015,6 @@
         async function sendVoiceQuery(blob, mimeType) {
             if (welcomeMsg) welcomeMsg.style.display = 'none';
 
-            // Show loading
             const loadingEl = addMessage('assistant', '', true);
             const labelEl   = loadingEl.querySelector('.loading-label');
             if (labelEl) labelEl.textContent = 'Transcribing...';
@@ -673,18 +1035,15 @@
                 const res  = await fetch('/api/voice', { method: 'POST', body: formData });
                 const data = await res.json();
 
-                await new Promise(r => setTimeout(r, 3000));  // min UX delay
+                await new Promise(r => setTimeout(r, 3000));
                 loadingEl.remove();
 
                 if (data.success) {
                     addMessage('user', data.transcript);
-                    const responseText = data.tts_notice
-                        ? data.response + `> ⚠️ *${data.tts_notice}*`
-                        : data.response;
-                    addMessage('assistant', responseText, false, false, data.agent_used);
+                    addMessage('assistant', data.response, false, false, data.agent_used);
                     saveToChatHistory(data.transcript, data.response);
+                    renderFollowUpChips(data.transcript, data.response);
 
-                    // ── Play TTS audio if returned ────────────────────────
                     if (data.audio_b64) {
                         try {
                             const raw   = atob(data.audio_b64);
@@ -710,6 +1069,173 @@
                 queryInput.disabled = false;
                 queryInput.focus();
             }
+        }
+
+        // =====================================================================
+        // Chart — inline Chart.js price charts
+        // =====================================================================
+        const CHART_KEYWORDS = /\b(chart|graph|plot|price.?history|historical|trend)\b/i;
+        const IGNORE_WORDS   = new Set([
+            'SHOW','CHART','GRAPH','PLOT','GIVE','LAST','DAYS','WEEK','YEAR',
+            'PRICE','STOCK','THE','FOR','AND','ME','MY','OF','IN','A','AN',
+            'GET','TELL','WHAT','HOW','IS','ARE','WAS','AT','ON','WITH',
+            'NS','BO','HK','AX','TO',
+        ]);
+
+        function detectChartRequest(query) {
+            if (!CHART_KEYWORDS.test(query)) return null;
+
+            const lower = query.toLowerCase();
+            let period = '1mo';
+            if      (/\b(1\s*week|5\s*day)\b/.test(lower))               period = '5d';
+            else if (/\b3\s*month/.test(lower))                           period = '3mo';
+            else if (/\b6\s*month/.test(lower))                           period = '6mo';
+            else if (/\b(1\s*year|annual|yearly|12\s*month)/.test(lower)) period = '1y';
+            else if (/\b2\s*year/.test(lower))                            period = '2y';
+            else if (/\b5\s*year/.test(lower))                            period = '5y';
+            else if (/\bmax\b/.test(lower))                               period = 'max';
+
+            // 1. Try TICKER.SUFFIX first (e.g. RELIANCE.NS, TCS.BO, AAPL.L)
+            //    Keep the dot intact — do NOT replace dots before this check
+            const suffixMatch = query.match(/\b([A-Za-z]{1,12}\.(NS|BO|HK|L|T|AX|TO))\b/i);
+            if (suffixMatch) {
+                return { ticker: suffixMatch[1].toUpperCase(), period };
+            }
+
+            // 2. Fallback: plain ticker without suffix (e.g. AAPL, TSLA, MSFT)
+            //    Only strip punctuation OTHER than dots here
+            const upper = query.toUpperCase().replace(/[,!?]/g, ' ');
+            for (const w of upper.split(/\s+/)) {
+                const m = w.match(/^([A-Z]{2,6})$/);
+                if (m && !IGNORE_WORDS.has(m[1])) {
+                    return { ticker: m[1], period };
+                }
+            }
+            return null;
+        }
+
+        const _chartInstances = {};  // ticker → Chart.js instance
+
+        function periodLabel(p) {
+            return { '5d':'1 Week','1mo':'1 Month','3mo':'3 Months','6mo':'6 Months',
+                     '1y':'1 Year','2y':'2 Years','5y':'5 Years','ytd':'YTD','max':'All Time' }[p] || p;
+        }
+
+        async function loadAndRenderChart(bubble, ticker, period) {
+            bubble.innerHTML = `<span style="color:#888;font-size:0.8rem;">Loading chart for <strong>${ticker}</strong>…</span>`;
+
+            try {
+                const res  = await fetch(`/api/chart?ticker=${encodeURIComponent(ticker)}&period=${encodeURIComponent(period)}`);
+                const data = await res.json();
+
+                if (!data.success) {
+                    bubble.innerHTML = `<span style="color:#f87171;font-size:0.85rem;">⚠️ ${data.error}</span>`;
+                    return;
+                }
+
+                const sign = data.change_pct >= 0 ? '+' : '';
+                const canvasId = `chart-${Date.now()}`;
+                const periods  = ['5d','1mo','3mo','6mo','1y','2y','5y'];
+
+                bubble.innerHTML = `
+                    <div class="chart-header">
+                        <span class="chart-ticker">📊 ${data.ticker}</span>
+                        <span class="chart-change ${data.change_pct >= 0 ? 'up' : 'down'}">
+                            ${sign}${data.change_pct}%
+                        </span>
+                    </div>
+                    <div class="chart-period-btns">
+                        ${periods.map(p => `<button class="chart-period-btn${p === data.period ? ' active' : ''}" data-period="${p}">${periodLabel(p)}</button>`).join('')}
+                    </div>
+                    <div class="chart-canvas-wrap"><canvas id="${canvasId}"></canvas></div>`;
+
+                // Period toggle buttons
+                bubble.querySelectorAll('.chart-period-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        loadAndRenderChart(bubble, ticker, btn.dataset.period);
+                    });
+                });
+
+                // Destroy previous instance for this ticker
+                if (_chartInstances[ticker]) { _chartInstances[ticker].destroy(); }
+
+                const ctx      = bubble.querySelector('canvas').getContext('2d');
+                const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+                gradient.addColorStop(0, data.color + '55');
+                gradient.addColorStop(1, data.color + '00');
+
+                _chartInstances[ticker] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            label: `${data.ticker} (${data.currency})`,
+                            data:  data.closes,
+                            borderColor:     data.color,
+                            backgroundColor: gradient,
+                            borderWidth: 2,
+                            pointRadius: data.closes.length > 60 ? 0 : 2,
+                            fill: true,
+                            tension: 0.3,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: ctx => `${data.currency} ${ctx.parsed.y.toFixed(2)}`,
+                                },
+                            },
+                        },
+                        scales: {
+                            x: {
+                                ticks: { color: '#888', maxTicksLimit: 8, font: { size: 10 } },
+                                grid:  { color: '#2a2b3d' },
+                            },
+                            y: {
+                                ticks: { color: '#888', font: { size: 10 } },
+                                grid:  { color: '#2a2b3d' },
+                            },
+                        },
+                    },
+                });
+
+            } catch (err) {
+                bubble.innerHTML = `<span style="color:#f87171;font-size:0.85rem;">⚠️ Failed to load chart: ${err.message}</span>`;
+            }
+        }
+
+        async function renderChartBubble(ticker, period) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message assistant';
+
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar';
+            avatar.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#a084ee" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble chart-bubble';
+
+            msgDiv.appendChild(avatar);
+            msgDiv.appendChild(bubble);
+            chatArea.appendChild(msgDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+
+            await loadAndRenderChart(bubble, ticker, period);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        // =====================================================================
+        // PWA — register service worker
+        // =====================================================================
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .catch(err => console.warn('SW registration failed:', err));
+            });
         }
     </script>
 </body>

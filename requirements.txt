@@ -10,3 +10,5 @@ groq   # for querying the data
 openai # for fetching the data from openai
 httpx  # async HTTP client for Sarvam AI API calls
 python-multipart # multipart form parsing (required for UploadFile in FastAPI)
+slowapi  # rate limiting for FastAPI
+cachetools  # TTL in-memory response cache

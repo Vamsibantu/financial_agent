@@ -6,25 +6,33 @@ from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from cachetools import TTLCache
 from dotenv import load_dotenv
 import os
 import re
 import traceback
 import httpx
+import hashlib
+import threading
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def _extract_failed_generation(error_msg: str) -> str:
     """
     Extract the LLM's natural-language text from a GROQ tool_use_failed error.
-    The error string is a Python dict repr, so values may use single or double quotes.
+    Returns empty string if the failed_generation is a raw tool-call tag (not human-readable).
     """
     for marker in ["'failed_generation': '", '"failed_generation": "', "'failed_generation': \"", '"failed_generation": \'']:
         idx = error_msg.find(marker)
         if idx != -1:
             text = error_msg[idx + len(marker):]
-            # Strip trailing quote characters and dict/JSON closers
-            text = text.rstrip("'\"} \n\r")
-            return text.strip()
+            text = text.rstrip("'\"} \n\r").strip()
+            # If it's a raw function/tool call tag, discard it — use fallback instead
+            if text.startswith("<function=") or text.startswith("```") or not text:
+                return ""
+            return text
     return ""
 
 
@@ -45,9 +53,18 @@ from agents.web_search_agent import web_search_agent
 from agents.multi_agent import multi_ai_agent
 
 # ── FastAPI app ──────────────────────────────────────────────────────────────
-app = FastAPI(title="Finance Sight")
+limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
+app = FastAPI(title="Finance Sight", docs_url=None, redoc_url=None)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+# ── Response cache (TTL = 5 min, max 256 entries) ────────────────────────────
+_cache: TTLCache = TTLCache(maxsize=256, ttl=300)
+_cache_lock = threading.Lock()
+
+MAX_QUERY_LEN = 1000   # characters
 
 AGENT_MAP = {
     "finance":    finance_agent,
@@ -92,6 +109,69 @@ def detect_agent(query: str) -> str:
     return "multi"           # default fallback — multi can handle anything
 
 
+@app.get("/health")
+async def health():
+    """Liveness check for deployment platforms."""
+    return {"status": "ok"}
+
+
+@app.get("/api/chart")
+async def get_chart(ticker: str, period: str = "1mo"):
+    """
+    Return close price history for a ticker symbol using yfinance.
+    Periods accepted: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, ytd, max
+    For NSE stocks append .NS (e.g. RELIANCE.NS), for BSE use .BO.
+    """
+    try:
+        import yfinance as yf
+
+        # Sanitize inputs
+        ticker = re.sub(r'[^A-Za-z0-9.\-]', '', ticker).upper()
+        if not ticker or len(ticker) > 12:
+            return JSONResponse({"success": False, "error": "Invalid ticker symbol."}, status_code=400)
+
+        VALID_PERIODS = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "ytd", "max"}
+        if period not in VALID_PERIODS:
+            period = "1mo"
+
+        stock = yf.Ticker(ticker)
+        hist  = stock.history(period=period)
+
+        if hist.empty:
+            return JSONResponse(
+                {"success": False, "error": (
+                    f"No price data found for '{ticker}'. "
+                    "For NSE stocks try appending .NS (e.g. RELIANCE.NS), for BSE use .BO."
+                )},
+                status_code=404,
+            )
+
+        labels     = hist.index.strftime("%d %b '%y").tolist()
+        closes     = [round(float(p), 2) for p in hist["Close"].tolist()]
+        color      = "#4ade80" if closes[-1] >= closes[0] else "#f87171"
+        change_pct = round(((closes[-1] - closes[0]) / closes[0]) * 100, 2) if closes[0] else 0.0
+
+        try:
+            currency = stock.fast_info.currency or ""
+        except Exception:
+            currency = ""
+
+        return JSONResponse({
+            "success":    True,
+            "ticker":     ticker,
+            "period":     period,
+            "labels":     labels,
+            "closes":     closes,
+            "currency":   currency,
+            "color":      color,
+            "change_pct": change_pct,
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Serve the main UI page."""
@@ -99,6 +179,7 @@ async def index(request: Request):
 
 
 @app.post("/api/query")
+@limiter.limit("15/minute")
 async def query_agent(request: Request):
     """
     Accept a JSON body with:
@@ -113,6 +194,12 @@ async def query_agent(request: Request):
         if not user_query:
             return JSONResponse({"success": False, "error": "Query cannot be empty."})
 
+        if len(user_query) > MAX_QUERY_LEN:
+            return JSONResponse(
+                {"success": False, "error": f"Query too long. Please keep it under {MAX_QUERY_LEN} characters."},
+                status_code=400,
+            )
+
         # ── Auto-routing: pick the best agent for this query ──────────────────
         if agent_key == "auto":
             agent_key = detect_agent(user_query)
@@ -122,6 +209,13 @@ async def query_agent(request: Request):
             return JSONResponse(
                 {"success": False, "error": f"Unknown agent: {agent_key}"}
             )
+
+        # ── Cache lookup ──────────────────────────────────────────────────────
+        cache_key = hashlib.md5(f"{agent_key}:{user_query}".encode()).hexdigest()
+        with _cache_lock:
+            cached = _cache.get(cache_key)
+        if cached:
+            return JSONResponse({"success": True, "response": cached, "agent_used": agent_key, "cached": True})
 
         # Use agent.run() to get the response programmatically
         response = agent.run(user_query)
@@ -139,6 +233,10 @@ async def query_agent(request: Request):
         
         if not content:
             content = str(response)
+
+        # ── Store in cache ────────────────────────────────────────────────────
+        with _cache_lock:
+            _cache[cache_key] = content
 
         return JSONResponse({"success": True, "response": content, "agent_used": agent_key})
 
